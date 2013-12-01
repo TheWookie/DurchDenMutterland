@@ -30,8 +30,10 @@ class DijkstraGraph:
         self.visited = {}
     
     def __reset_visited__(self):
+        #print(self.visited.values())
         for key in self.graph.keys():
             self.visited[key] = False
+        #print(self.visited.values())
     
     def __s_v__(self, vertex_name):
         if not (vertex_name in self.graph.keys()):
@@ -40,15 +42,15 @@ class DijkstraGraph:
             self.visited[vertex_name] = False
     
     def add_vertex(self, vertex_name, dest_name, dest_distance):
-        vertex_name = vertex_name.upper()
-        dest_name = dest_name.upper()
+        vertex_name = vertex_name  # .upper()
+        dest_name = dest_name  # .upper()
         self.__s_v__(vertex_name)
         self.__s_v__(dest_name)
         self.graph[vertex_name].append([dest_name, dest_distance])
         return self
     
     def __get_adjacent__(self, vertex_name):
-        vertex_name = vertex_name.upper()
+        vertex_name = vertex_name  # .upper()
         self.__s_v__(vertex_name)
         '''return list(self.graph[vertex_name])'''
         self.visited[vertex_name] = True
@@ -63,9 +65,10 @@ class DijkstraGraph:
         for a in adj:
             pq.put(self.__PathClass__(current + [a]))
     
-    def find_path(self, start, *end):
-        start = start.upper()
-        end = list(set([x.upper() for x in end]))  # list comprehension, convert tuple to list. Booyeah.
+    def find_path(self, start, end):
+        start = start  # .upper()
+        # end = list(set([x.upper() for x in end]))  # list comprehension, convert tuple to list. Booyeah.
+        end = end  # [x.upper() for x in end]
         while (start in end):
             end.remove(start)
         if (not start in self.graph.keys()) or (not set(end) <= set(self.graph.keys())) or (start == end):
@@ -80,6 +83,9 @@ class DijkstraGraph:
                 end.remove(shortest.head())
                 self.__reset_visited__()
                 pq = PriorityQueue()
+                print(shortest.head())
+                print(shortest.path())
+                print(end)
                 self.__assign__(pq, shortest.path(), [])
                 if not end:
                     return shortest.path()
@@ -109,5 +115,121 @@ def test():
     print("Path from A to D, F: {}".format(mdm.find_path("A", "F")))
     print("Path from A to D, F: {}".format(mdm.find_path("A", "F", "A", "A", "A")))
 
-if(__name__ == "__main__"):
-    test()
+def setupdb():
+    import os
+    try:
+        os.remove(r"C:\Users\Paul\Documents\Aptana Studio 3 Workspace\DurchDenMutterland\src\default.db")
+        print("DB Deleted.")
+    except:
+        print("DB Not Deleted.")
+    import csv
+    import sqlite3
+    import re
+    conn = sqlite3.connect("default.db")
+    c = conn.cursor()
+    csvparsed = csv.reader(open('GermanRoutes.csv'))
+    for row in csvparsed:
+        if (row[0] == "CSV"):
+            head = "current text"
+            for i in range(1, len(row)):
+                head += ",'" + row[i].lower() + "' text"
+            # print(head)
+            c.execute("CREATE TABLE graph (" + head + ")")
+        else:
+            line = "'" + row[0].lower() + "'"
+            # print(row)
+            for i in range(1, len(row)):
+                # print (str(i) + " " + row[i])
+                if (row[i] == "NULL"):
+                    line += ",NULL"
+                    continue
+                kilometers = re.search(r"^\s*(\d+\.?\d*)\s*km", row[i]).group(1)
+                '''if (float(kilometers) > 450):
+                    line += ",NULL"
+                    continue'''
+                minutes = int(re.search(r"\s*(\d+)\s*mins?", row[i]).group(1))
+                hours = re.search(r"(\d+)\s*hours", row[i])
+                if (hours):
+                    minutes += int(hours.group(1)) * 60 
+                line += ",'" + str(kilometers) + ":" + str(minutes) + "'"
+            # print(line)
+            c.execute("INSERT INTO graph VALUES (" + line + ")")
+        # print(row)
+    conn.commit()
+    conn.close()
+    
+def testdb():
+    import sqlite3
+    conn = sqlite3.connect("default.db")
+    c = conn.cursor()
+    print("---")
+    for row in c.execute("SELECT * FROM graph"):
+        print(row)
+    print("---")
+    '''for row in c.execute("SELECT koln FROM graph WHERE current='bremen'"):
+        print(row[0])'''
+    conn.close()
+    
+def purgedb(limit):
+    cities = full_cities()
+    import sqlite3
+    conn = sqlite3.connect("default.db")
+    c = conn.cursor()
+    for row in cities:
+        row_array = []
+        for col in cities:
+            dest = valFromDb(row, col)
+            if (dest):
+                row_array.append([col, dest])
+        row_array.sort(key=lambda x: float(x[1].split(':')[0]))
+        for large in row_array[limit:]:
+            c.execute("UPDATE graph SET " + large[0] + "=NULL WHERE current='" + row + "'")
+    conn.commit()
+    conn.close()
+    
+def valFromDb(current_city, destination_city):
+    import sqlite3
+    conn = sqlite3.connect("default.db")
+    c = conn.cursor()
+    query_result = c.execute("SELECT " + destination_city + " FROM graph WHERE current='" + current_city + "'").fetchone()[0]
+    # print(query_result)
+    conn.close()
+    return query_result
+
+def full_cities():
+    import csv
+    first_line = [x.lower() for x in next(csv.reader(open('GermanRoutes.csv')))[1:]]
+    return first_line
+def dest_cities():
+    import csv
+    first_line = [x.lower() for x in next(csv.reader(open('Destinations.csv')))[1:]]
+    return first_line
+
+def showtime():
+    # Initialize our graph
+    germany = DijkstraGraph()
+    # load the list of cities available
+    cities_list = full_cities()
+    destinations_list = dest_cities()
+    # intitialize those distances (which are measured in KM in our graph)
+    import re
+    for a in cities_list:
+        for b in cities_list:
+            # print("{} to {}".format(a, b))
+            info = valFromDb(a, b)
+            if (info):
+                germany.add_vertex(a, b, float(info.split(':')[0]))
+    print(germany.find_path('kassel', ['basel_switzerland']))
+    print(germany.find_path('basel_switzerland', ['kassel']))
+    path = germany.find_path('berlin', destinations_list)
+    print(path)
+    pass
+    
+if (__name__ == "__main__"):
+    # test()
+    setupdb()
+    testdb()
+    purgedb(12)
+    #testdb()
+    showtime()
+    # showtime()
